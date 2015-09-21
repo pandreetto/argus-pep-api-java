@@ -35,6 +35,7 @@ import java.util.List;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.bouncycastle.asn1.pkcs.PrivateKeyInfo;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.jce.provider.X509CertificateObject;
 import org.bouncycastle.openssl.PEMDecryptorProvider;
@@ -178,6 +179,12 @@ public class PEMFileReader {
                 }catch(Exception ex){
                     log.error(ex.getMessage());
                 }
+            } else if (object instanceof PrivateKeyInfo) {
+                PrivateKeyInfo privInfo = (PrivateKeyInfo) object;
+                result = converter.getPrivateKey(PrivateKeyInfo.getInstance(privInfo));
+                break;
+            } else {
+                log.debug("Found object: " + object.getClass().getCanonicalName());
             }
 
             object = reader.readObject();
