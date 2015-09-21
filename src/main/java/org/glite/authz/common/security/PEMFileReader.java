@@ -42,7 +42,10 @@ import org.bouncycastle.openssl.PEMEncryptedKeyPair;
 import org.bouncycastle.openssl.PEMKeyPair;
 import org.bouncycastle.openssl.PEMParser;
 import org.bouncycastle.openssl.jcajce.JcaPEMKeyConverter;
+import org.bouncycastle.openssl.jcajce.JceOpenSSLPKCS8DecryptorProviderBuilder;
 import org.bouncycastle.openssl.jcajce.JcePEMDecryptorProviderBuilder;
+import org.bouncycastle.operator.InputDecryptorProvider;
+import org.bouncycastle.pkcs.PKCS8EncryptedPrivateKeyInfo;
 
 /**
  * PEM files reader to extract PEM encoded private key and certificates from
@@ -137,54 +140,65 @@ public class PEMFileReader {
      */
     protected PrivateKey readPrivateKey(InputStream is, String password)
         throws IOException {
-        Reader inputStreamReader = new InputStreamReader(is);
-        PEMParser reader = new PEMParser(inputStreamReader);
-        KeyPair keyPair;
-        Object object = null;
-        
-        try {
-            
-            do {
-                object = reader.readObject();
-                if (object == null) {
-                    String error = "No KeyPair or PrivateKey object found";
-                    log.error(error);
-                    throw new IOException(error);
-                }
-            } while (!(object instanceof KeyPair || object instanceof PrivateKey
-                    || object instanceof PEMEncryptedKeyPair || object instanceof PEMKeyPair));
-            
-        } finally {
-            try {
-                reader.close();
-            } catch (Exception e) {
-                log.error(e.getMessage());
-            }
-        }
-        
-        log.debug("Object type: " + object.getClass().getCanonicalName());
 
         JcaPEMKeyConverter converter = new JcaPEMKeyConverter().setProvider("BC");
 
-        if (object instanceof KeyPair) {
-            keyPair = (KeyPair) object;
-            return keyPair.getPrivate();
-        } else if (object instanceof PrivateKey) {
-            return (PrivateKey) object;
-        } else if (object instanceof PEMEncryptedKeyPair) {
-            PEMDecryptorProvider decProv = new JcePEMDecryptorProviderBuilder().setProvider("BC").build(
-                    password.toCharArray());
-            KeyPair pair = converter.getKeyPair(((PEMEncryptedKeyPair) object).decryptKeyPair(decProv));
-            return pair.getPrivate();
-        } else if (object instanceof PEMKeyPair) {
-            KeyPair pair = converter.getKeyPair((PEMKeyPair) object);
-            return pair.getPrivate();
-        } else {
-            String error = "Unknown object type: " + object.getClass().getName();
+        Reader inputStreamReader = new InputStreamReader(is);
+        PEMParser reader = new PEMParser(inputStreamReader);
+
+        PrivateKey result = null;
+        Object object = reader.readObject();
+        while (object != null) {
+
+            if (object instanceof KeyPair) {
+                result = ((KeyPair) object).getPrivate();
+                break;
+            } else if (object instanceof PrivateKey) {
+                result = (PrivateKey) object;
+                break;
+            } else if (object instanceof PEMEncryptedKeyPair) {
+                PEMDecryptorProvider decProv = new JcePEMDecryptorProviderBuilder().setProvider("BC")
+                    .build(password.toCharArray());
+                KeyPair keyPair = converter.getKeyPair(((PEMEncryptedKeyPair) object)
+                    .decryptKeyPair(decProv));
+                result = keyPair.getPrivate();
+                break;
+            } else if (object instanceof PEMKeyPair) {
+                KeyPair keyPair = converter.getKeyPair((PEMKeyPair) object);
+                result = keyPair.getPrivate();
+                break;
+            } else if (object instanceof PKCS8EncryptedPrivateKeyInfo) {
+                PKCS8EncryptedPrivateKeyInfo encPrivKeyInfo = 
+                    (PKCS8EncryptedPrivateKeyInfo) object;
+                try {
+                    InputDecryptorProvider pkcs8Prov = new JceOpenSSLPKCS8DecryptorProviderBuilder()
+                        .build(password.toCharArray());
+                    result = converter.getPrivateKey(encPrivKeyInfo.decryptPrivateKeyInfo(pkcs8Prov));
+                    break;
+                }catch(Exception ex){
+                    log.error(ex.getMessage());
+                }
+            }
+
+            object = reader.readObject();
+        }
+
+        try {
+            reader.close();
+        } catch (Exception e) {
+            log.error(e.getMessage());
+        }
+
+        if (object == null) {
+            String error = "No KeyPair or PrivateKey object found";
             log.error(error);
             throw new IOException(error);
-
+        } else {
+            log.debug("Object type: " + object.getClass().getCanonicalName());
         }
+
+        return result;
+
     }
 
     /**
