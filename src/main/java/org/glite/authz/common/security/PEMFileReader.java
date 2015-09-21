@@ -37,9 +37,12 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.jce.provider.X509CertificateObject;
-import org.bouncycastle.openssl.PEMReader;
-import org.bouncycastle.openssl.PasswordFinder;
-import org.glite.authz.common.model.util.Strings;
+import org.bouncycastle.openssl.PEMDecryptorProvider;
+import org.bouncycastle.openssl.PEMEncryptedKeyPair;
+import org.bouncycastle.openssl.PEMKeyPair;
+import org.bouncycastle.openssl.PEMParser;
+import org.bouncycastle.openssl.jcajce.JcaPEMKeyConverter;
+import org.bouncycastle.openssl.jcajce.JcePEMDecryptorProviderBuilder;
 
 /**
  * PEM files reader to extract PEM encoded private key and certificates from
@@ -133,36 +136,51 @@ public class PEMFileReader {
      *             if an error occurs while parsing the input stream
      */
     protected PrivateKey readPrivateKey(InputStream is, String password)
-            throws IOException {
-        Reader inputStreamReader= new InputStreamReader(is);
-        PEMReader reader= new PEMReader(inputStreamReader, new PEMPassword(password));
+        throws IOException {
+        Reader inputStreamReader = new InputStreamReader(is);
+        PEMParser reader = new PEMParser(inputStreamReader);
         KeyPair keyPair;
-        Object object= null;
-        do {
-            object= reader.readObject();
-            if (object == null) {
-                String error= "No KeyPair or PrivateKey object found";
-                log.error(error);
-                throw new IOException(error);
+        Object object = null;
+        
+        try {
+            
+            do {
+                object = reader.readObject();
+                if (object == null) {
+                    String error = "No KeyPair or PrivateKey object found";
+                    log.error(error);
+                    throw new IOException(error);
+                }
+            } while (!(object instanceof KeyPair || object instanceof PrivateKey
+                    || object instanceof PEMEncryptedKeyPair || object instanceof PEMKeyPair));
+            
+        } finally {
+            try {
+                reader.close();
+            } catch (Exception e) {
+                log.error(e.getMessage());
             }
-        } while (!(object instanceof KeyPair || object instanceof PrivateKey));
-
+        }
+        
         log.debug("Object type: " + object.getClass().getCanonicalName());
 
-        try {
-            reader.close();
-        } catch (Exception e) {
-            // ignored
-        }
+        JcaPEMKeyConverter converter = new JcaPEMKeyConverter().setProvider("BC");
+
         if (object instanceof KeyPair) {
-            keyPair= (KeyPair) object;
+            keyPair = (KeyPair) object;
             return keyPair.getPrivate();
-        }
-        else if (object instanceof PrivateKey) {
+        } else if (object instanceof PrivateKey) {
             return (PrivateKey) object;
-        }
-        else {
-            String error= "Unknown object type: " + object.getClass().getName();
+        } else if (object instanceof PEMEncryptedKeyPair) {
+            PEMDecryptorProvider decProv = new JcePEMDecryptorProviderBuilder().setProvider("BC").build(
+                    password.toCharArray());
+            KeyPair pair = converter.getKeyPair(((PEMEncryptedKeyPair) object).decryptKeyPair(decProv));
+            return pair.getPrivate();
+        } else if (object instanceof PEMKeyPair) {
+            KeyPair pair = converter.getKeyPair((PEMKeyPair) object);
+            return pair.getPrivate();
+        } else {
+            String error = "Unknown object type: " + object.getClass().getName();
             log.error(error);
             throw new IOException(error);
 
@@ -196,7 +214,7 @@ public class PEMFileReader {
     public X509Certificate[] readCertificates(File file)
             throws FileNotFoundException, IOException {
         FileReader fileReader= new FileReader(file);
-        PEMReader reader= new PEMReader(fileReader, new PEMPassword());
+        PEMParser reader= new PEMParser(fileReader);
         List<X509Certificate> certs= new ArrayList<X509Certificate>();
         Object object= null;
         do {
@@ -222,48 +240,4 @@ public class PEMFileReader {
         return certs.toArray(new X509Certificate[] {});
     }
 
-    /**
-     * PEMPassword is a {@link PasswordFinder} for PEM encoded encrypted private
-     * key or other object.
-     */
-    private class PEMPassword implements PasswordFinder {
-
-        /** The password */
-        private char[] password_= null;
-
-        /**
-         * Default constructor. The password is <code>null</code>.
-         */
-        public PEMPassword() {
-            password_= null;
-        }
-
-        /**
-         * Constructor.
-         * 
-         * @param password
-         *            the PEM password.
-         */
-        public PEMPassword(String password) {
-            if (password == null) {
-                password_= null;
-            }
-            else if (Strings.safeTrimOrNullString(password) == null) {
-                password_= null;
-            }
-            else {
-                password_= password.toCharArray();
-            }
-        }
-
-        /*
-         * (non-Javadoc)
-         * 
-         * @see org.bouncycastle.openssl.PasswordFinder#getPassword()
-         */
-        public char[] getPassword() {
-            return password_;
-        }
-
-    }
 }
