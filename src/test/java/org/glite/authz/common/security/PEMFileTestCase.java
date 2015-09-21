@@ -30,7 +30,9 @@ import junit.framework.TestCase;
 public class PEMFileTestCase extends TestCase {
 
     String keyFilename= "key.pem";
+    String keyNoPwdFilename= "key_nopwd.pem";
     String pkcs8keyFilename= "key_pkcs8.pem";
+    String pkcs8keyNoPwdFilename= "key_pkcs8_nopwd.pem";
     String invalidKeyFilename= "key_invalid.pem";
     String password= "test";
 
@@ -51,6 +53,17 @@ public class PEMFileTestCase extends TestCase {
         System.out.println("algorithm: " + pkey.getAlgorithm());
     }
 
+    public void testPEMFileReaderReadPrivateKeyWithNoPwd() throws IOException {
+        InputStream keyInputStream= getClass().getResourceAsStream("/" + keyNoPwdFilename);
+        assertNotNull("InputStream " + keyNoPwdFilename + " not found", keyInputStream);
+        PEMFileReader pfr= new PEMFileReader();
+        PrivateKey pkey= pfr.readPrivateKey(keyInputStream, password);
+        assertNotNull(pkey);
+        System.out.println("class: " + pkey.getClass().getName());
+        System.out.println("format: " + pkey.getFormat());
+        System.out.println("algorithm: " + pkey.getAlgorithm());
+    }
+
     public void testPKCS8PEMFileReaderReadPrivateKey() throws IOException {
         InputStream keyInputStream= getClass().getResourceAsStream("/" + pkcs8keyFilename);
         assertNotNull("InputStream " + pkcs8keyFilename + " not found", keyInputStream);
@@ -62,6 +75,19 @@ public class PEMFileTestCase extends TestCase {
         System.out.println("algorithm: " + pkey.getAlgorithm());
 
     }
+
+    public void testPKCS8PEMFileReaderReadPrivateKeyNoPwd() throws IOException {
+        InputStream keyInputStream= getClass().getResourceAsStream("/" + pkcs8keyNoPwdFilename);
+        assertNotNull("InputStream " + pkcs8keyNoPwdFilename + " not found", keyInputStream);
+        PEMFileReader pfr= new PEMFileReader();
+        PrivateKey pkey= pfr.readPrivateKey(keyInputStream, password);
+        assertNotNull(pkey);
+        System.out.println("class: " + pkey.getClass().getName());
+        System.out.println("format: " + pkey.getFormat());
+        System.out.println("algorithm: " + pkey.getAlgorithm());
+
+    }
+    
     public void testInvalidPEMFileReaderReadPrivateKey() {
         InputStream keyInputStream= getClass().getResourceAsStream("/" + invalidKeyFilename);
         assertNotNull("InputStream " + invalidKeyFilename + " not found", keyInputStream);
